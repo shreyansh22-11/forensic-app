@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ForensiX — File Metadata Extractor</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0a0b0d;
+        --surface: #111316;
+        --surface2: #181b1f;
+        --border: rgba(255, 255, 255, 0.08);
+        --border-bright: rgba(255, 255, 255, 0.18);
+        --accent: #00ff9d;
+        --accent2: #00c9ff;
+        --text: #e8eaed;
+        --muted: #6b7280;
+        --danger: #ff4d4d;
+        --warn: #f5a623;
+        --mono: "Space Mono", monospace;
+        --display: "Syne", sans-serif;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.6;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      /* Scanline overlay */
+      body::before {
+        content: "";
+        pointer-events: none;
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.07) 2px,
+          rgba(0, 0, 0, 0.07) 4px
+        );
+        z-index: 9999;
+      }
+
+      /* Header */
+      header {
+        border-bottom: 1px solid var(--border);
+        padding: 1.5rem 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--surface);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .logo {
+        font-family: var(--display);
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #fff;
+      }
+      .logo span {
+        color: var(--accent);
+      }
+
+      .badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+        padding: 2px 8px;
+        border-radius: 2px;
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+      }
+
+      .status-dot {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .status-dot::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 6px var(--accent);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      /* Layout */
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 2.5rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        align-items: start;
+      }
+
+      /* Panel */
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface2);
+      }
+
+      .panel-title {
+        font-family: var(--display);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .panel-body {
+        padding: 1.5rem;
+      }
+
+      /* Drop zone */
+      .drop-zone {
+        border: 1px dashed var(--border-bright);
+        border-radius: 4px;
+        padding: 3rem 2rem;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .drop-zone::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse at 50% 0%,
+          rgba(0, 255, 157, 0.04) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+      }
+
+      .drop-zone:hover,
+      .drop-zone.dragover {
+        border-color: var(--accent);
+        background: rgba(0, 255, 157, 0.03);
+      }
+
+      .drop-icon {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 1rem;
+        opacity: 0.4;
+      }
+
+      .drop-zone h3 {
+        font-family: var(--display);
+        font-size: 1rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text);
+      }
+
+      .drop-zone p {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        margin-bottom: 1.25rem;
+      }
+
+      .supported-types {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+      }
+
+      .type-chip {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        padding: 2px 8px;
+        background: var(--surface2);
+        border: 1px solid var(--border-bright);
+        border-radius: 2px;
+        color: var(--accent2);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 8px 20px;
+        border: 1px solid var(--accent);
+        background: transparent;
+        color: var(--accent);
+        border-radius: 2px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+
+      .btn:hover {
+        background: var(--accent);
+        color: var(--bg);
+      }
+
+      .btn-primary {
+        width: 100%;
+        justify-content: center;
+        margin-top: 1rem;
+        padding: 10px;
+        font-size: 12px;
+      }
+
+      .btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      #file-input {
+        display: none;
+      }
+
+      /* Selected file */
+      .file-preview {
+        display: none;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--surface2);
+        border: 1px solid var(--border-bright);
+        border-radius: 3px;
+        margin-top: 1rem;
+      }
+
+      .file-preview.show {
+        display: flex;
+      }
+
+      .file-icon-wrap {
+        width: 36px;
+        height: 36px;
+        background: rgba(0, 201, 255, 0.1);
+        border: 1px solid rgba(0, 201, 255, 0.3);
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .file-preview-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .file-preview-name {
+        font-size: 12px;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .file-preview-size {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      .remove-file {
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        padding: 4px;
+        border-radius: 2px;
+        transition: color 0.15s;
+      }
+      .remove-file:hover {
+        color: var(--danger);
+      }
+
+      /* Progress bar */
+      .progress-wrap {
+        display: none;
+        margin-top: 1rem;
+      }
+      .progress-wrap.show {
+        display: block;
+      }
+
+      .progress-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+
+      .progress-bar {
+        height: 2px;
+        background: var(--surface2);
+        border-radius: 1px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: var(--accent);
+        width: 0%;
+        transition: width 0.3s ease;
+        box-shadow: 0 0 8px var(--accent);
+      }
+
+      /* Results panel */
+      .result-empty {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--muted);
+      }
+
+      .result-empty svg {
+        opacity: 0.2;
+        margin: 0 auto 1rem;
+        display: block;
+      }
+
+      /* Metadata table */
+      .meta-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 1rem;
+      }
+
+      .meta-type-badge {
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        background: rgba(0, 255, 157, 0.1);
+        border: 1px solid rgba(0, 255, 157, 0.3);
+        color: var(--accent);
+        border-radius: 2px;
+      }
+
+      .meta-filename {
+        font-size: 11px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meta-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .meta-table tr {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .meta-table tr:last-child {
+        border-bottom: none;
+      }
+
+      .meta-table td {
+        padding: 8px 0;
+        vertical-align: top;
+        font-size: 11px;
+      }
+
+      .meta-table .key {
+        color: var(--muted);
+        width: 40%;
+        padding-right: 1rem;
+        white-space: nowrap;
+      }
+
+      .meta-table .val {
+        color: var(--text);
+        word-break: break-all;
+      }
+
+      /* GPS section */
+      .gps-card {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: var(--surface2);
+        border: 1px solid rgba(0, 201, 255, 0.2);
+        border-radius: 3px;
+      }
+
+      .gps-label {
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent2);
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .gps-coords {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .gps-coord-item {
+      }
+      .gps-coord-label {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .gps-coord-val {
+        font-size: 14px;
+        color: var(--text);
+        margin-top: 2px;
+      }
+
+      /* Records panel */
+      .records-section {
+        margin-top: 1.5rem;
+      }
+
+      .records-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+
+      .records-table th {
+        text-align: left;
+        padding: 6px 10px;
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        font-weight: 400;
+      }
+
+      .records-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      .records-table tr:last-child td {
+        border-bottom: none;
+      }
+      .records-table tr:hover td {
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .gps-pill {
+        display: inline-block;
+        font-size: 10px;
+        padding: 1px 6px;
+        background: rgba(0, 201, 255, 0.1);
+        border: 1px solid rgba(0, 201, 255, 0.25);
+        color: var(--accent2);
+        border-radius: 2px;
+      }
+
+      .no-gps {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      /* Error / info messages */
+      .msg {
+        display: none;
+        padding: 10px 14px;
+        border-radius: 3px;
+        font-size: 11px;
+        margin-top: 1rem;
+        border: 1px solid;
+      }
+      .msg.show {
+        display: block;
+      }
+      .msg.error {
+        color: var(--danger);
+        border-color: rgba(255, 77, 77, 0.3);
+        background: rgba(255, 77, 77, 0.07);
+      }
+      .msg.info {
+        color: var(--accent);
+        border-color: rgba(0, 255, 157, 0.3);
+        background: rgba(0, 255, 157, 0.05);
+      }
+
+      /* Scrollable results */
+      .meta-scroll {
+        max-height: 420px;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+
+      .meta-scroll::-webkit-scrollbar {
+        width: 3px;
+      }
+      .meta-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .meta-scroll::-webkit-scrollbar-thumb {
+        background: var(--border-bright);
+        border-radius: 2px;
+      }
+
+      /* Animated fade-in */
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .fade-up {
+        animation: fadeUp 0.3s ease forwards;
+      }
+
+      /* Footer */
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 1rem 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--muted);
+        letter-spacing: 0.05em;
+        margin-top: 3rem;
+      }
+
+      @media (max-width: 720px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 1.5rem;
+        }
+        header {
+          padding: 1rem 1.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span class="logo">Forens<span>i</span>X</span
+        ><span class="important">MetaData Extractor</span>
+        <span class="badge">v1.0</span>
+      </div>
+      <div class="header-right">
+        <div class="status-dot">system online</div>
+        <button class="btn" onclick="loadRecords()">View Records</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="grid">
+        <!-- LEFT: Upload panel -->
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">// upload target</span>
+              <span style="font-size: 10px; color: var(--muted)"
+                >max 16 MB</span
+              >
+            </div>
+            <div class="panel-body">
+              <div
+                class="drop-zone"
+                id="drop-zone"
+                onclick="document.getElementById('file-input').click()"
+              >
+                <svg
+                  class="drop-icon"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect
+                    x="8"
+                    y="6"
+                    width="28"
+                    height="36"
+                    rx="2"
+                    stroke="#00ff9d"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="M28 6v10h10"
+                    stroke="#00ff9d"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M17 28l7-7 7 7"
+                    stroke="#00ff9d"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M24 21v10"
+                    stroke="#00ff9d"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <h3>Drop file here</h3>
+                <p>or click to browse from your system</p>
+                <div class="supported-types">
+                  <span class="type-chip">.JPG</span>
+                  <span class="type-chip">.JPEG</span>
+                  <span class="type-chip">.PNG</span>
+                  <span class="type-chip">.PDF</span>
+                  <span class="type-chip">.DOCX</span>
+                </div>
+              </div>
+
+              <input
+                type="file"
+                id="file-input"
+                accept=".jpg,.jpeg,.png,.pdf,.docx"
+              />
+
+              <div class="file-preview" id="file-preview">
+                <div class="file-icon-wrap">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <rect
+                      x="2"
+                      y="1"
+                      width="9"
+                      height="14"
+                      rx="1"
+                      stroke="#00c9ff"
+                      stroke-width="1.2"
+                    />
+                    <path
+                      d="M9 1v4h4"
+                      stroke="#00c9ff"
+                      stroke-width="1.2"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </div>
+                <div class="file-preview-info">
+                  <div class="file-preview-name" id="preview-name">—</div>
+                  <div class="file-preview-size" id="preview-size">—</div>
+                </div>
+                <button
+                  class="remove-file"
+                  onclick="clearFile()"
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div class="progress-wrap" id="progress-wrap">
+                <div class="progress-label">
+                  <span id="progress-text">extracting metadata...</span>
+                  <span id="progress-pct">0%</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" id="progress-fill"></div>
+                </div>
+              </div>
+
+              <div class="msg error" id="err-msg"></div>
+
+              <button
+                class="btn btn-primary"
+                id="extract-btn"
+                onclick="extract()"
+                disabled
+              >
+                &#9654;&nbsp; Run Extraction
+              </button>
+            </div>
+          </div>
+
+          <!-- Records panel -->
+          <div
+            class="panel records-section"
+            id="records-panel"
+            style="display: none"
+          >
+            <div class="panel" style="margin-top: 1.5rem">
+              <div class="panel-header">
+                <span class="panel-title">// search files</span>
+              </div>
+              <div class="panel-body">
+                <input
+                  type="text"
+                  id="searchBox"
+                  placeholder="Search file content..."
+                  style="
+                    width: 100%;
+                    padding: 10px;
+                    background: #111;
+                    color: #fff;
+                    border: 1px solid #333;
+                  "
+                />
+
+                <button
+                  onclick="searchFiles()"
+                  class="btn btn-primary"
+                  style="margin-top: 10px"
+                >
+                  Search
+                </button>
+
+                <div
+                  id="searchResults"
+                  style="margin-top: 15px; font-size: 11px; color: #ccc"
+                ></div>
+              </div>
+            </div>
+            <div class="panel-header">
+              <span class="panel-title">// extraction records</span>
+              <button
+                class="btn"
+                style="padding: 4px 10px; font-size: 10px"
+                onclick="
+                  document.getElementById('records-panel').style.display =
+                    'none'
+                "
+              >
+                close
+              </button>
+            </div>
+            <div class="panel-body" style="padding: 0">
+              <div id="records-body">
+                <div
+                  style="
+                    padding: 2rem;
+                    text-align: center;
+                    color: var(--muted);
+                    font-size: 11px;
+                  "
+                >
+                  Loading records...
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Results panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">// extracted metadata</span>
+            <div id="result-type-badge" style="display: none"></div>
+          </div>
+          <div class="panel-body">
+            <div class="result-empty" id="result-empty">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <circle
+                  cx="24"
+                  cy="24"
+                  r="18"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                />
+                <path
+                  d="M24 16v9"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+                <circle cx="24" cy="31" r="1.2" fill="currentColor" />
+              </svg>
+              <p
+                style="font-size: 12px; margin-bottom: 4px; color: var(--text)"
+              >
+                No file analysed yet
+              </p>
+              <p style="font-size: 11px">
+                Upload a file and run extraction to<br />inspect its embedded
+                metadata.
+              </p>
+            </div>
+
+            <div id="result-content" style="display: none" class="fade-up">
+              <div class="meta-header">
+                <span class="meta-type-badge" id="res-type">—</span>
+                <span class="meta-filename" id="res-filename">—</span>
+              </div>
+              <div class="meta-scroll">
+                <table class="meta-table" id="meta-table"></table>
+              </div>
+              <div id="gps-section" style="display: none">
+                <div class="gps-card">
+                  <div class="gps-label">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <circle
+                        cx="6"
+                        cy="5"
+                        r="2"
+                        stroke="#00c9ff"
+                        stroke-width="1.2"
+                      />
+                      <path
+                        d="M6 1C3.79 1 2 2.79 2 5c0 3 4 7 4 7s4-4 4-7c0-2.21-1.79-4-4-4z"
+                        stroke="#00c9ff"
+                        stroke-width="1.2"
+                      />
+                    </svg>
+                    GPS coordinates detected
+                  </div>
+                  <div class="gps-coords">
+                    <div class="gps-coord-item">
+                      <div class="gps-coord-label">LATITUDE</div>
+                      <div class="gps-coord-val" id="gps-lat">—</div>
+                    </div>
+                    <div class="gps-coord-item">
+                      <div class="gps-coord-label">LONGITUDE</div>
+                      <div class="gps-coord-val" id="gps-lon">—</div>
+                    </div>
+                  </div>
+                  <a
+                    id="gps-link"
+                    href="#"
+                    target="_blank"
+                    style="
+                      display: inline-block;
+                      margin-top: 10px;
+                      font-size: 10px;
+                      letter-spacing: 0.08em;
+                      color: var(--accent2);
+                      text-decoration: none;
+                      border-bottom: 1px solid rgba(0, 201, 255, 0.3);
+                    "
+                  >
+                    Open in Google Maps ↗
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span>ForensiX &mdash; digital forensics toolkit</span>
+      <span>Flask + SQLite + ExifRead</span>
+    </footer>
+
+    <script>
+      const dropZone = document.getElementById("drop-zone");
+      const fileInput = document.getElementById("file-input");
+      let selectedFile = null;
+
+      // Drag & drop
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+      dropZone.addEventListener("dragleave", () =>
+        dropZone.classList.remove("dragover"),
+      );
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+        const f = e.dataTransfer.files[0];
+        if (f) setFile(f);
+      });
+
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files[0]) setFile(fileInput.files[0]);
+      });
+
+      function setFile(f) {
+        selectedFile = f;
+        document.getElementById("preview-name").textContent = f.name;
+        document.getElementById("preview-size").textContent = formatSize(
+          f.size,
+        );
+        document.getElementById("file-preview").classList.add("show");
+        document.getElementById("extract-btn").disabled = false;
+        hideError();
+      }
+
+      function clearFile() {
+        selectedFile = null;
+        fileInput.value = "";
+        document.getElementById("file-preview").classList.remove("show");
+        document.getElementById("extract-btn").disabled = true;
+        hideError();
+      }
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+      }
+
+      function showError(msg) {
+        const el = document.getElementById("err-msg");
+        el.textContent = "> ERROR: " + msg;
+        el.classList.add("show");
+      }
+      function hideError() {
+        document.getElementById("err-msg").classList.remove("show");
+      }
+
+      async function extract() {
+        if (!selectedFile) return;
+        hideError();
+
+        const btn = document.getElementById("extract-btn");
+        btn.disabled = true;
+
+        // Animate progress
+        const prog = document.getElementById("progress-wrap");
+        const fill = document.getElementById("progress-fill");
+        const pct = document.getElementById("progress-pct");
+        prog.classList.add("show");
+        let p = 0;
+        const ticker = setInterval(() => {
+          p = Math.min(p + Math.random() * 12, 88);
+          fill.style.width = p + "%";
+          pct.textContent = Math.round(p) + "%";
+        }, 120);
+
+        try {
+          const fd = new FormData();
+          fd.append("file", selectedFile);
+
+          const res = await fetch("/extract", { method: "POST", body: fd });
+          const data = await res.json();
+
+          clearInterval(ticker);
+          fill.style.width = "100%";
+          pct.textContent = "100%";
+          document.getElementById("progress-text").textContent = "complete";
+
+          setTimeout(() => {
+            prog.classList.remove("show");
+            fill.style.width = "0%";
+          }, 800);
+
+          if (data.error) {
+            showError(data.error);
+            btn.disabled = false;
+            return;
+          }
+
+          renderResult(data, selectedFile.name);
+        } catch (e) {
+          clearInterval(ticker);
+          prog.classList.remove("show");
+          showError("Network error — is the server running?");
+        }
+
+        btn.disabled = false;
+      }
+
+      function renderResult(data, filename) {
+        document.getElementById("result-empty").style.display = "none";
+        const content = document.getElementById("result-content");
+        content.style.display = "block";
+        content.classList.remove("fade-up");
+        void content.offsetWidth;
+        content.classList.add("fade-up");
+
+        document.getElementById("res-type").textContent = data.type;
+        document.getElementById("res-filename").textContent = filename;
+
+        const table = document.getElementById("meta-table");
+        table.innerHTML = "";
+
+        const fields = data.fields || {};
+        const entries = Object.entries(fields);
+
+        if (entries.length === 0) {
+          table.innerHTML =
+            '<tr><td colspan="2" style="color:var(--muted);padding:1rem 0;font-size:11px">No metadata fields found.</td></tr>';
+        } else {
+          entries.forEach(([k, v]) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td class="key">${escHtml(k)}</td><td class="val">${escHtml(v)}</td>`;
+            table.appendChild(tr);
+          });
+        }
+
+        const gpsSection = document.getElementById("gps-section");
+        if (data.gps && data.gps.lat != null) {
+          document.getElementById("gps-lat").textContent =
+            data.gps.lat.toFixed(6) + "°";
+          document.getElementById("gps-lon").textContent =
+            data.gps.lon.toFixed(6) + "°";
+          document.getElementById("gps-link").href =
+            `https://www.google.com/maps?q=${data.gps.lat},${data.gps.lon}`;
+          gpsSection.style.display = "block";
+        } else {
+          gpsSection.style.display = "none";
+        }
+      }
+
+      function escHtml(str) {
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      async function loadRecords() {
+        const panel = document.getElementById("records-panel");
+        const body = document.getElementById("records-body");
+        panel.style.display = "block";
+        body.innerHTML =
+          '<div style="padding:2rem;text-align:center;color:var(--muted);font-size:11px">Loading...</div>';
+
+        try {
+          const res = await fetch("/records");
+          const data = await res.json();
+
+          if (!data.length) {
+            body.innerHTML =
+              '<div style="padding:2rem;text-align:center;color:var(--muted);font-size:11px">No records found.</div>';
+            return;
+          }
+
+          let html = '<table class="records-table" style="width:100%">';
+          html +=
+            "<thead><tr><th>#</th><th>Filename</th><th>Type</th><th>GPS</th><th>Date</th></tr></thead><tbody>";
+
+          data.forEach((r) => {
+            const gps =
+              r.gps_lat != null
+                ? `<span class="gps-pill">${parseFloat(r.gps_lat).toFixed(3)}, ${parseFloat(r.gps_lon).toFixed(3)}</span>`
+                : `<span class="no-gps">—</span>`;
+            const date = r.date_extracted
+              ? r.date_extracted.substring(0, 16)
+              : "—";
+            html += `<tr>
+        <td style="color:var(--muted)">${r.id}</td>
+        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.filename)}">${escHtml(r.filename)}</td>
+        <td><span class="type-chip">${escHtml(r.filetype.replace(".", "").toUpperCase())}</span></td>
+        <td>${gps}</td>
+        <td style="color:var(--muted)">${date}</td>
+      </tr>`;
+          });
+
+          html += "</tbody></table>";
+          body.innerHTML = html;
+        } catch {
+          body.innerHTML =
+            '<div style="padding:2rem;text-align:center;color:var(--danger);font-size:11px">Failed to load records.</div>';
+        }
+      }
+      async function searchFiles() {
+        const q = document.getElementById("searchBox").value;
+
+        const res = await fetch("/search?q=" + encodeURIComponent(q));
+        const data = await res.json();
+
+        let html = "";
+
+        if (data.length === 0) {
+          html = '<div style="color:#888">No results found</div>';
+        } else {
+          data.forEach((d) => {
+            html += `<div style="margin-bottom:10px;border-bottom:1px solid #333;padding-bottom:8px">
+        <b>${d.filename}</b> (${d.filetype})<br>
+        <small>${d.preview}</small>
+      </div>`;
+          });
+        }
+
+        document.getElementById("searchResults").innerHTML = html;
+      }
+    </script>
+  </body>
+</html>
